@@ -1,0 +1,282 @@
+---
+title: "Phylogenetically Aligned Component Analysis, Appendix 3"
+author: "Michael L. Collyer & Dean C. Adams"
+
+output:
+  pdf_document:
+    fig_caption: yes
+    number_sections: no
+    keep_tex: true
+    pandoc_args:
+
+csl: methods-in-ecology-and-evolution.csl
+bibliography: PaCA-Refs.bib
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Additional simulations for the comparison of PACA to Phy-PCA
+
+The Appendix simulates data in the same way as the main article, but varies parameters and performs many simulations runs, in order to ascertain how varying parameters influences results.
+
+### The following conditions were considered:
+
++ Simulations performed over many simulation runs (100)
++ Varied tree depth
++ Varied number of variables
++ Varied correlation structure
++ Varied relative amounts of phylogenetic and ecological signals
+
+For each set of simulation runs, the effect size ($Z$-score from random $K$) of phylogenetic signal and $RV$ in the first PaC, $RV_1$, are calculated.
+
+Although Appendix 2 expands the types of analyses to include PCA, Phy-PCA (with two types of projection, considering whether GLS residuals are transformed), and PACA (with OLS, GLS, and transformed GLS residuals), the analyses in Appendix 3 only consider Phy-PCA and PACA with GLS residuals, as in the main article.  It is clear that transforming residuals removes phylogenetic signal, which renders meaningless the statistics compared.  Additionally, Appendix 2 reveals that PACA results with OLS or GLS residuals are quite similar with balanced trees, and that PCA and PACA results are similar if phylogenetic signal is the only signal.  We do not include PCA (with OLS residuals) because results would conflate signals and not help to contrast results from ordination methods that align specifically to (PACA) and independent of (Phy-PCA) phylogenetic signal. 
+
+## Set-up 
+
+```{r, include = TRUE, echo = TRUE}
+## Packages will be updated on CRAN after publication.
+# devtools::install_github("mlcollyer/RRPP", ref = "develop")
+# devtools::install_github("geomorphR/geomorph", ref = "Develop")
+```
+
+
+```{r, include = TRUE, echo = TRUE, fig.height = 8, fig.cap = "Example balanced tree."}
+library(ape)
+library(geiger)
+library(phytools)
+library(geomorph) # Depends on RRPP, so RRPP must be installed
+library(MASS)
+
+```
+
+## General functions for running simulations
+
+```{r, include = TRUE, echo = TRUE}
+
+get.results <- function(depth, p, r, ecol.strength, nsims) {
+  
+  tree <- compute.brlen(stree(n = 2^depth, type = "balanced"))
+  
+  get.ordinations <- function(tree, Y) {
+    ppca <- gm.prcomp(Y, phy = tree, GLS = TRUE, transform = FALSE)
+    paca  <- gm.prcomp(Y, phy = tree, GLS = TRUE, transform = FALSE, 
+                       align.to.phy = TRUE)
+    
+    list(PhyPCA = ppca, PACA = paca)
+  }
+  
+  get.RV1 <- function(L) {
+    L <- L[2]
+    sapply(L, function(x) x$RV[1])
+  }
+  
+  get.physignal1 <- function(L) {
+    result <- sapply(1:length(L), function(j){
+      ps <- physignal(L[[j]]$x[,1], tree, print.progress = FALSE)
+      ps <- geomorph:::effect.size(ps$random.K)
+    })
+    names(result) <- names(L)
+    result
+  }
+  
+  sim.data <- lapply(1:nsims, function(j) {
+    Sig <- matrix(r, p, p)
+    diag(Sig) <- 1
+    R <- mvrnorm(n = 2^depth, mu = rep(0, p), Sigma = Sig)
+    PR <- sim.char(tree, par = Sig)[,,1]
+    E <- matrix(rep(c(0, ecol.strength), 2^depth/2))
+    E <- E %*% rep(1, p)
+    Yn <- R
+    Yp <- PR
+    Ye <- E + R
+    Yh <- PR + E
+  })
+  
+  ords <- lapply(sim.data, function(x) get.ordinations(tree, x))
+  RV1 <- sapply(ords, get.RV1)
+  Z.ps1 <- sapply(ords, get.physignal1)
+  
+  list(RV1 = RV1, Z.ps1 = Z.ps1)
+
+}
+
+```
+
+## Example from main text (and standard for comparison)
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=9}
+
+par(mfrow = c(1,2))
+
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+## Increase tree depth
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(6, 10, 0, 1.5, nsims = 100)
+```
+
+### depth = 6, p = 10, r = 0, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(7, 10, 0, 1.5, nsims = 100)
+```
+
+### depth = 7, p = 10, r = 0, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+## Summary
+
+Compared to the standard, increasing tree depth:
+
++ Had little impact on $RV_1$.  The median value of $RV_1$ decreased slightly with increased tree depth, but the interquartile range and full range of values remained rather consistent.
++ Exacerbated the disparity in effect sizes for the amount of phylogenetic signal found in first components.  $Z$-scores diverged slightly as tree size was increased, indicating that phylogenetic signal is intrinsically linked to tree size.
+
+
+## Increase variable number
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 20, 0, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 20, r = 0, ecol.strength = 1.5
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+\hfill\break
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 30, 0, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 30, r = 0, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+## Summary
+
+Compared to the standard, increasing variable number:
+
++ Had no impact on $RV_1$. 
++ Had no effect on $Z$-scores.
+
+## Increase variable correlation
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0.2, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0.2, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+\hfill\break
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0.4, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0.4, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+\hfill\break
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0.6, 1.5, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0.6, ecol.strength = 1.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+## Summary
+
+Compared to the standard, increasing variable correlation:
+
++ Had little impact on $RV_1$.  The median value of $RV_1$ decreased slightly with increased variable correlation, but the interquartile range and full range of values remained rather consistent.
++ Decreased the disparity in effect sizes for the amount of phylogenetic signal found in first components.  Median $Z$-scores became less divergent with increased variable correlations.  
++ Examination of results (not shown) suggested overall $RV$ and $Z$ from $K_{mult}$ were similar across variable correlation scenarios, suggesting that variable correlations do not reduce the amount of phylogenetic signal but can reduce the amount of phylogenetic signal captured in the first PaC.
+
+## Increase ecological signal strength
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0, 2, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0, ecol.strength = 2
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+\hfill\break
+
+```{r, include = TRUE, echo = TRUE}
+results <- get.results(5, 10, 0, 2.5, nsims = 100)
+```
+
+### depth = 5, p = 10, r = 0, ecol.strength = 2.5
+
+```{r, include = TRUE, echo = FALSE, fig.height = 5, fig.width=8}
+par(mfrow = c(1,2))
+boxplot(results$RV1, ylab = "RV in PaC 1")
+boxplot(t(results$Z.ps1), ylab = "Phylogenetic signal (Z) in first component")
+
+```
+
+## Summary
+
+Compared to the standard, increasing ecological signal strength:
+
++ Had a negatove impact on $RV_1$.  The median value of $RV_1$ decreased considerably with increased ecological signal.
++ Had no effect on $Z$-scores, indicating that although $RV_1$ is informative as a descriptive statistic, it can be mitigated by alternative signals.  However, phylogenetic signal effect size ($Z$-score) more appropriately conveys how the amount of phylogenetic signal manifest across random permutations.  This suggests that although $RV_1$ might be smaller with the presence of greater ecological signal, the value is relatively much larger than could be expected by chance from a null model that has no phylogenetic signal and large ecological signal.

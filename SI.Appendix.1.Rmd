@@ -1,0 +1,69 @@
+---
+title: "Phylogenetically Aligned Component Analysis, Appendix 1"
+author: "Michael L. Collyer & Dean C. Adams"
+
+output:
+  pdf_document:
+    fig_caption: yes
+    number_sections: no
+    keep_tex: true
+    pandoc_args:
+
+csl: methods-in-ecology-and-evolution.csl
+bibliography: PaCA-Refs.bib
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Additional Statistical Details, Data Transformation, and Standardization
+
+In the main article, we introduced the equation for phylogenetic principal component analysis (phyPCA) as, 
+
+\begin{align}
+w\mathbf{I}^T \mathbf{T}^{-1} \mathbf{Z}  = \mathbf{U D V}^T,
+\end{align}
+
+where $\mathbf{I}$ is an $n \times n$ identity matrix for $n$ species that could be scaled by weight, $w$; $\mathbf{T}$ is an $n \times n$ symmetric transformation matrix found through the Cholesky decomposition of $\mathbf{C}$, the $n \times n$ phylogenetic covariance matrix, as $\mathbf{C} =\mathbf{TT}^T$; $\mathbf{Z}$ is an $n \times p$ matrix of generalized least squares (GLS) residuals found by subtracting the GLS mean from the matrix of data, $\mathbf{Y}$; and $\mathbf{U D V}^T$ is the singular value decomposition (SVD) yielding left and right sets of vectors, $\mathbf{U}$ and $\mathbf{V}$, respectively, with columns equal to $\min(n-1,p)$ and rows equal to $n$ and $p$, respectively.  The matrix, $\mathbf{D}$ is a $\min(n-1,p) \times \min(n-1,p)$ diagonal matrix of vector singular values (weights). \break
+
+If one views any ordination as an alignment of residuals to another "alignment" matrix, *equation* 1 presents two optional ways of perceiving the alignment to principal components.  On one hand, one can view GLS residuals, $\mathbf{Z}$ aligned to a transformation of the identity matrix, $\mathbf{I}^T \mathbf{T}^{-1}$.  On the other hand, one can view transformed GLS residuals, $\mathbf{T}^{-1}\mathbf{Z}$ aligned to the identity matrix, $\mathbf{I}$.  This dichotomy is simply identifying a preferred target of transformation in one's view, which is only appropriate to consider because of the GLS transformation required for phyPCA.  In other words, if $\mathbf{T} = \mathbf{I}$, then *equation* 1 becomes the ordinary least squares (OLS) version of PCA, and neither $\mathbf{I}$ nor $\mathbf{Z}$ are transformed.  Therefore, one must ask, what are GLS residuals, exactly, or are there multiple ways to describe GLS residuals, either transformed or untransformed? \break
+
+Here we describe the possible ways to view transformation and standardization of residuals, first by identifying that *equation* 1 should be written as,
+
+\begin{align}
+w\mathbf{I}^T \mathbf{Z}  = \mathbf{U D V}^T,
+\end{align}
+
+and that $\mathbf{Z}$ is a matrix of residuals that incorporates the GLS transformation.  This logic seems appropriate if phyPCA really is a form of PCA; i.e., alignment of data to an identity matrix to find principal components.  We can also recognize there are multiple ways to transform $\mathbf{Z}$, which we describe in more detail below, starting from first principles.
+
+## Transformation and standardization of data
+
+An important consideration for both calculation of components and projection is how $\mathbf{Z}$ is calculated from $\mathbf{Y}$.  The simplest method is to use ordinary least-squares (OLS) estimation of the mean vector (center of gravity).  If we let $\mathbf{1}$ be an $n \times 1$ vector of $1$s, then $\mathbf{\hat{y}}^T = (\mathbf{1}^t\mathbf{1})^{-1}\mathbf{1}^T\mathbf{Y}$.  We can make a matrix of mean vectors as $1$s, $\mathbf{\hat{Y}} = \mathbf{1\hat{y}}^T =  \mathbf{1}(\mathbf{1}^T\mathbf{1})^{-1}\mathbf{1}^T\mathbf{Y}$, and because $(\mathbf{1}^t\mathbf{1})^{-1} = n^{-1}$, this simplifies to $\mathbf{\hat{Y}}  =  n^{-1} \mathbf{1}\mathbf{1}^T\mathbf{Y}$.  The matrix, $n^{-1} \mathbf{1}\mathbf{1}^T$ is a symmetric projection matrix, which if we define as $\mathbf{H}$ (the "hat" matrix), then $\mathbf{\hat{Y}} = \mathbf{HY}$.  More importantly, $\mathbf{Z}$ is defined as mean-centered data, $\mathbf{Y} - \mathbf{HY}$, or 
+
+\begin{align}
+\mathbf{Z} = (\mathbf{I} - \mathbf{H})\mathbf{Y}.
+\end{align}
+
+However, an OLS estimation of the residuals, $\mathbf{Z}$, might not be desired as we know that the vectors of $\mathbf{Z}$, $\mathbf{z}_i^T$, are not independently distributed, due to phylogenetic relatedness.  Therefore, a generalized least-squares (GLS) estimation of $\mathbf{Z}$ can be obtained by defining, $\mathbf{H}_{GLS} = \mathbf{1}(\mathbf{1}^t \mathbf{C}^{-1} \mathbf{1})^{-1}\mathbf{1}^T \mathbf{C}^{-1}$, and using this version of $\mathbf{H}$ in *equation* 3. It is important to realize that although idempotent, $\mathbf{H}_{GLS}$ is not symmetric; therefore, $\mathbf{Z} = (\mathbf{I} - \mathbf{H}_{GLS})\mathbf{Y}$ finds the phylogenetic GLS residuals of $\mathbf{Y}$ via an oblique projection.  Although the principal components, $\mathbf{V}$, are orthogonal, the PC scores, $\mathbf{ZV}$ can be correlated.  This property has been discussed, previously by Polly et al. [-@Polly_et_al2013], who also demonstrated that the Euclidean distances among points in all phyPC dimensions are the same as the distances among observations in $\mathbf{Y}$.  Therefore, this kind of projection maintains the best representation of $\mathbf{Y}$, with the proviso that the first phyPC is aligned to be independent of phylogeny.  Thus, phylogenetic signal is still present in the projected data.\break
+
+An alternative is to transform the residuals by the phylogenetic transformation matrix, $\mathbf{T}$, such that the residuals are devoid of phylogenetic signal.  This can be accomplished as,
+
+\begin{align}
+\mathbf{Z} = \mathbf{T}^{-1}(\mathbf{I} - \mathbf{H}_{GLS})\mathbf{Y}.
+\end{align}
+
+In this way, residuals are not only centered by the GLS mean but thy are also transformed.  Projection of these residuals, again as $\mathbf{ZV}$, represets an orthogonal projection from the space of the transformed data, $\mathbf{T}^{-1}\mathbf{Y}$ [@Basilevsky2013].  This transformation can be viewed as essential, so that a cross-product of residuals yields the residual covariance matrix; i.e., $n^{-1}\mathbf{Z}^T\mathbf{Z} =   n^{-1}\left((\mathbf{I} - \mathbf{H})\mathbf{Y} \right)^T (\mathbf{T}^T\mathbf{T})^{-1} \left((\mathbf{I} - \mathbf{H})\mathbf{Y} \right) = n^{-1}\left((\mathbf{I} - \mathbf{H})\mathbf{Y} \right)^T \mathbf{C}^{-1} \left((\mathbf{I} - \mathbf{H})\mathbf{Y} \right)$ **as is required in GLS analyses. (Add this??)**.  The sum of variances of projected scores would equal the trace of the residual covariance matrix.  Projection of untransformed residuals (as in *equation* 3) produces sums of variances of projected scores that equal the trace of a residual covariance matrix found via OLS centering, ignoring GLS transformation.  However, Revell [-@Revell2009] noted this and that a phylogenetic generalized least squares (PGLS) anlysis of the phyPCA scores would still require GLS transformation in the calculations. \break
+
+The analytical details above highlight that with GLS, there are two version of residuals to consider for projection.  One (untransformed) projects form the data space and retains the dispersion of values in the data space, along wth phylogenetic signal.  The other (transformed) projects from a transformed space where phylogenetic signal has been removed.  (We demonstrate this, visually, in Appendix 2 of this supporting Information.).  If one wishes to visualize trends independent of phylogenetic signal, transformation of residuals might be a good idea.  However, transforming residuals before aligning them to a phylogenetic covariance matrix, $\mathbf{C}$, rather than $\mathbf{I}$, as done with phylogenetically aligned component analysis (PaCA) will not make much sense, since the residuals are devoid of phlyogenetic signal. \break
+
+In all calculations of $\mathbf{Z}$ -- whether via OLS, GLS-centering, or GLS transformation -- the residuals can also be standardized if so desired by first obtaining a diagonal matrix of weights, $\mathbf{W}$, found as  $\mathbf{W} = \left( diag\left( n^{-1}\mathbf{Z}^T\mathbf{Z}\right) \right)^{-1/2}$.  Thus, updating $\mathbf{Z}$ as, $\mathbf{Z} = \mathbf{ZW}$, will assure that the variables (column vectors) of $\mathbf{Z}$ have unit variance.  This might be desired if the original variables have vastly different variances.  Any of the calculations above can substitute $n-1$ for $n$, if unbiased estimates of covariances are desired.  \break
+
+# References {-}
+
+ \setlength{\parindent}{-0.25in}
+ \setlength{\leftskip}{0.25in}
+ \setlength{\parskip}{8pt}
+ \noindent
+

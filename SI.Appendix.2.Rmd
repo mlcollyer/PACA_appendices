@@ -1,0 +1,493 @@
+---
+title: "Phylogenetically Aligned Component Analysis, Appendix 2"
+author: "Michael L. Collyer & Dean C. Adams"
+
+output:
+  pdf_document:
+    fig_caption: yes
+    number_sections: no
+    keep_tex: true
+    pandoc_args:
+
+csl: methods-in-ecology-and-evolution.csl
+bibliography: PACA-Refs.bib
+
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Repeat of initial simulations in the main article, with annotation, and with additional options.
+
+To consider if PACA offers a useful data visualization alternative to PA or Phy-PCA, it is worth considering the results from four idealized conditions: (1) no "signal" in the data, phylogenetic or otherwise; (2) strong phylogenetic signal in the data, but no other signal; (3) an ecological signal but no phylogenetic signal; and (4) both phylogenetic and "ecological" signals in the data.  The following is one simulation, as presented in the main text.  However, in this simulation, we include all possible rotations and projections.  The expanded presentation in this appendix considers: (1) PCA and PACA with OLS residuals (PA is PCA with estimated ancestral character states projected); (2) PCA and PACA with GLS mean-centered residuals (Phy-PCA and PACA, as in the main article); and PCA and PACA with GLS-transformed residuals (Phy-PCA vectors but projection with transformed residuals; see Appendix 1).
+
+In Appendix 3, we vary simulation parameters.\hfill\break
+
+Do the following, only if needed, removing # in each line.
+
+```{r, include = TRUE, echo = TRUE}
+## Packages will be updated on CRAN after publication.
+# devtools::install_github("mlcollyer/RRPP")
+# devtools::install_github("geomorphR/geomorph", ref = "Stable")
+```
+
+### Set-up
+
+```{r, include = TRUE, echo = TRUE, fig.height = 8, fig.cap = "Example balanced tree."}
+library(ape)
+library(geiger)
+library(phytools)
+library(geomorph) # Depends on RRPP, so RRPP must be installed
+library(MASS)
+
+depth <- 5 # n subclade levels in tree
+p <- 10
+
+
+# Single example (change trees if desired)
+tree <- compute.brlen(stree(n = 2^depth, type = "balanced")) # idealized tree
+# tree <- pbtree(n = 2^depth) # more realistic tree
+
+clade.cols <- rep(1, nrow(tree$edge))
+roots <- which(tree$edge[,1] == min(tree$edge[,1]))
+clade.cols[roots[2]:length(clade.cols)] <- 4
+
+tip.cols <- clade.cols[tree$edge[,2] < min(tree$edge[,1])]
+
+tip.shapes <- rep(1:2, 2^depth/2)
+
+plot(ladderize(tree), edge.width=2, show.tip.label = FALSE, 
+     edge.color = clade.cols)
+tiplabels(pch = rep(c(21, 22), 2^depth/2), bg = rep(c(1,4), each = 2^depth/2), 
+          col = rep(c(1,4), each = 2^depth/2), cex = 1.5)
+
+```
+
+### Tree plotting parameters
+
+phy.par <- list(tip.labels = FALSE, node.labels = FALSE, node.bg = "gray", edge.color = "gray")
+
+### Helper functions
+
+```{r}
+k.by.p <- function(x, Cov) {
+  x <- as.matrix(x$x)
+  invC <- solve(Cov)
+  D.mat <- RRPP:::Cov.proj(Cov, id = rownames(x))
+  N <- nrow(x)
+  ones <- matrix(1, N, 1) 
+  a.adj <- ones %*% crossprod(ones, invC)/sum(invC)
+  
+  K <- function(x){
+    x <- as.matrix(x)
+    x.c <- x - a.adj%*%x
+    MSEobs.d <- sum(x.c^2)  
+    x.a <- D.mat%*%x.c
+    MSE.d <- sum(x.a^2)  
+    K.denom <- (sum(diag(Cov)) - N/sum(invC))/(N-1)
+    (MSEobs.d/MSE.d) / K.denom
+  }
+  p <- NCOL(x)
+  
+  k.by.p <- apply(x, 2, K)
+  k.to.p <- sapply(1:p, function(j) {
+    xp <- as.matrix(x[, 1:j])
+    K(x[,1:j])
+  })
+  
+  list(k.by.p = k.by.p, k.to.p = k.to.p)
+  
+}
+
+k.by.p.plot <- function(K1,...){
+  kmax <- max(c(unlist(K), 1))
+  p <- length(K$k.by.p)
+  plot(1:p, K$k.by.p, type = "l", lty = 1,
+       xlab = "Components, p", ylab = "K", ylim = c(0, kmax), ...)
+  points(1:p, K$k.to.p, type = "l", lty = 3)
+  legend("topright", c("K for p", "K(mult) for 1:p"), 
+         lty = c(1, 3))
+}
+
+k2.by.p.plot <- function(K1, K2, ...){# K1 = PCA; K2 = PACA
+  p <- length(K1$k.by.p)
+  
+  plot(1:p, K1$k.by.p, type = "l", lty = 1, lwd=2,
+       xlab = "Components, p", ylab = "K", ...)
+  points(1:p, K1$k.to.p, type = "l", lty = 3, lwd=2)
+  points(1:p, K2$k.by.p, type = "l", lty = 1, col = "red", lwd=2)
+  points(1:p, K2$k.to.p, type = "l", lty = 3, col = "red", lwd=2)
+  legend("topright", c("K for p", "K(mult) for 1:p"), 
+         lty = c(1, 3), lwd = 2)
+}
+```
+
+### Simulating noise
+
+```{r, include = TRUE, echo = TRUE}
+set.seed(21)
+
+r <- 0 # amount of among variable correlation
+Sig <- matrix(r, p, p)
+diag(Sig) <- 1
+
+R <- mvrnorm(n = 2^depth, mu = rep(0, p), Sigma = Sig)
+
+```
+
+### Simulating phylogenetic signal
+
+```{r, include = TRUE, echo = TRUE}
+
+set.seed(21)
+
+PR <- sim.char(tree, par = Sig)[,,1] # Note R simulated automatically
+
+```
+
+### Simulating ecological & phylogenetic signal
+
+```{r, include = TRUE, echo = TRUE}
+set.seed(21)
+Ecol.strength <- 1.5 # might need to increase or decrease this, depending on tree
+
+E <- matrix(rep(c(0, Ecol.strength), 2^depth/2))
+E <- E %*% rep(1, p)
+```
+
+### Data Sets
+
+```{r, include = TRUE, echo = TRUE}
+Yn <- R
+Yp <- PR
+Ye <- E + R
+Yh <- PR + E # h stands for heterogeneous
+
+rownames(Yn) <- rownames(Ye) <- rownames(Yh) <- rownames(Yp) 
+```
+
+\newpage
+
+# Perform analyses and plot the projections, followed by phylogenetic signal comparisons.
+
+## Plots of "Noise" Data
+
+```{r, include = TRUE, echo = TRUE, fig.width = 8, fig.height=8, fig.cap = "Data projections for the six possible scenarios, plus phylogenetic signal comparisons.  Data have no signal (noise). Points are formatted as in Fig. 1. The bottom row of plots correspond to the plots above them, illustrating $K$ (solid) or $K_{mult}$ (dotted) by component, colored seprately for PCA and PACA."}
+
+PCA.n.ols <- gm.prcomp(Yn, tree, align.to.phy = FALSE, GLS = FALSE) # OLS PCA
+PCA.n.gls <- gm.prcomp(Yn, tree, align.to.phy = FALSE, GLS = TRUE) # GLS (phy) PCA
+PCA.n.tgls <- gm.prcomp(Yn, tree, 
+              align.to.phy = FALSE, GLS = TRUE, transform = TRUE) # GLS (phy) PCA; transformed residuals
+PACA.n.ols <- gm.prcomp(Yn, tree, align.to.phy = TRUE, GLS = FALSE) # OLS PACA
+PACA.n.gls <- gm.prcomp(Yn, tree, align.to.phy = TRUE, GLS = TRUE) # GLS PACA
+PACA.n.tgls <- gm.prcomp(Yn, tree, 
+               align.to.phy = TRUE, GLS = TRUE, transform = TRUE) # GLS PCA; transformed residuals
+
+Cov <- vcv.phylo(tree)
+
+K1ols <- k.by.p(PCA.n.ols, Cov)
+K1gls <- k.by.p(PCA.n.gls, Cov)
+K1tgls <- k.by.p(PCA.n.tgls, Cov)
+K2ols <- k.by.p(PACA.n.ols, Cov)
+K2gls <- k.by.p(PACA.n.gls, Cov)
+K2tgls <- k.by.p(PACA.n.tgls, Cov)
+
+Kmax <- max(c(unlist(K2ols), 1))
+
+par(mfrow = c(3, 3))
+
+phy.par <- list(tip.labels = FALSE, node.labels = FALSE, node.bg = 1, edge.color = 1)
+
+plot(PCA.n.ols, phylo = TRUE, main = "PA", 
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.n.gls, phylo = TRUE, main = "Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.n.tgls, phylo = TRUE, main = "t-Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+plot(PACA.n.ols, phylo = TRUE, main = "OLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.n.gls, phylo = TRUE, main = "GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.n.tgls, phylo = TRUE, main = "t-GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+k2.by.p.plot(K1ols, K2ols, main = "OLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1gls, K2gls, main = "GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1tgls, K2tgls, main = "t-GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+
+par(mfrow = c(1, 1))
+
+```
+
+\newpage
+
+```{r}
+summary(PCA.n.ols)
+summary(PCA.n.gls)
+summary(PCA.n.tgls)
+summary(PACA.n.ols)
+summary(PACA.n.gls)
+summary(PACA.n.tgls)
+```
+
+## Summary
+
+There is no appreciable differences among the various methods, as there is no phylogenetic or other signal influencing alignment of axes.  Phylogenetic profile plots confirm the lack of phylogenetic signal.  Component dispersion summaries confirm, however, that PACA maximizes among-ancestor variance in the first PaC, whereas PCA maximizes tip variance in the first PC.
+
+\newpage
+
+## Plots of Data with Phylogenetic Signal Only
+
+```{r, include = TRUE, echo = TRUE, fig.width = 8, fig.height=8, fig.cap = "Data projections for the six possible scenarios, plus phylogenetic signal comparisons.  Data have phylogenetic signal, only. Points are formatted as in Fig. 1. The bottom row of plots correspond to the plots above them, illustrating $K$ (solid) or $K_{mult}$ (dotted) by component, colored seprately for PCA and PACA."}
+
+PCA.p.ols <- gm.prcomp(Yp, tree, align.to.phy = FALSE, GLS = FALSE) # OLS PCA
+PCA.p.gls <- gm.prcomp(Yp, tree, align.to.phy = FALSE, GLS = TRUE) # GLS (phy) PCA
+PCA.p.tgls <- gm.prcomp(Yp, tree, 
+              align.to.phy = FALSE, GLS = TRUE, transform = TRUE) # GLS (phy) PCA; transformed residuals
+PACA.p.ols <- gm.prcomp(Yp, tree, align.to.phy = TRUE, GLS = FALSE) # OLS PACA
+PACA.p.gls <- gm.prcomp(Yp, tree, align.to.phy = TRUE, GLS = TRUE) # GLS PACA
+PACA.p.tgls <- gm.prcomp(Yp, tree, 
+               align.to.phy = TRUE, GLS = TRUE, transform = TRUE) # GLS PCA; transformed residuals
+
+Cov <- vcv.phylo(tree)
+
+K1ols <- k.by.p(PCA.p.ols, Cov)
+K1gls <- k.by.p(PCA.p.gls, Cov)
+K1tgls <- k.by.p(PCA.p.tgls, Cov)
+K2ols <- k.by.p(PACA.p.ols, Cov)
+K2gls <- k.by.p(PACA.p.gls, Cov)
+K2tgls <- k.by.p(PACA.p.tgls, Cov)
+
+Kmax <- max(c(unlist(K2ols), 1))
+
+par(mfrow = c(3, 3))
+
+phy.par <- list(tip.labels = FALSE, node.labels = FALSE, node.bg = 1, edge.color = 1)
+
+plot(PCA.p.ols, phylo = TRUE, main = "PA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.p.gls, phylo = TRUE, main = "Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.p.tgls, phylo = TRUE, main = "t-Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+plot(PACA.p.ols, phylo = TRUE, main = "OLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.p.gls, phylo = TRUE, main = "GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.p.tgls, phylo = TRUE, main = "t-GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+k2.by.p.plot(K1ols, K2ols, main = "OLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1gls, K2gls, main = "GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1tgls, K2tgls, main = "t-GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+
+par(mfrow = c(1, 1))
+
+```
+
+\newpage
+
+```{r}
+summary(PCA.p.ols)
+summary(PCA.p.gls)
+summary(PCA.p.tgls)
+summary(PACA.p.ols)
+summary(PACA.p.gls)
+summary(PACA.p.tgls)
+```
+
+## Summary
+
+When phylogenetic signal is the only signal in the data, PCA and PACA will resemble each other.  Whether OLS or GLS mean-centered data are projected has little influence on PACA ordination plots (at least with a balanced tree, where OLS and GLS means are similar).  PCA again maximizes variance zmong tips and PACA again maximizes variance among ancestors, along the first component.  Phy-PCA obviously rotates the data space to be most independent of phylogeny on the first PhyPC, but cumulative phylogenetic signal $K_{mult}$ is maintained in the data set (dotted phylogenetic signal profile trends converge).  Using transformed GLS-residuals removes phylogenetic signal from either phyPC or PaC projections. \break
+
+It should be noted that the summaries between Phy-PCA with different residual projections are the same, as the Phy-PCA in each case finds the same vectors.  Only the projection is different.  (It is oblique and from the data space in the former case and orthogonal from the transformed data space in the latter.) \break
+
+It is also worth noting how projections are oblique or orthogonal.
+
+```{r}
+round(cor(PCA.p.ols$x), 2)
+round(cor(PCA.p.gls$x), 2)
+round(cor(PCA.p.tgls$x), 2)
+round(cor(PACA.p.ols$x), 2)
+round(cor(PACA.p.gls$x), 2)
+round(cor(PACA.p.tgls$x), 2)
+
+```
+
+Only in PCA and Phy-PCA with transformed residual projection are the projections orthogonal, producing uncorrelated component scores.  All other approaches are oblique projections.  Also note the following:
+
+```{r}
+sum(PCA.p.ols$sdev^2)
+sum(PCA.p.gls$sdev^2)
+sum(PCA.p.tgls$sdev^2)
+sum(PACA.p.ols$sdev^2)
+sum(PACA.p.gls$sdev^2)
+sum(PACA.p.tgls$sdev^2)
+
+```
+
+Transforming residuals for projection does not change GLS variances.  But consider the dispersion of scores across components:
+
+```{r}
+# Traces of covariance matrices of scores
+
+sum(diag(var(PCA.p.ols$x)))
+sum(diag(var(PCA.p.gls$x)))
+sum(diag(var(PCA.p.tgls$x)))
+sum(diag(var(PACA.p.ols$x)))
+sum(diag(var(PACA.p.gls$x)))
+sum(diag(var(PACA.p.tgls$x)))
+
+```
+
+Not transforming GLS residuals is tantamount to finding the OLS variances in projection plots (resembles original data space, not accounting for phylogenetic independence.)  PACA follows the Phy-PCA lead, rotating axes differently, but producing the same dispersion (in all dimensions) when the same residuals are projected.  PACA does not distort the inter-taxon difference found via Phy-PCA.
+
+\newpage
+
+## Plots of Data with Ecological Signal Only
+
+```{r, include = TRUE, echo = TRUE, fig.width = 8, fig.height=8, fig.cap = "Data projections for the six possible scenarios, plus phylogenetic signal comparisons.  Data have ecological signal, only. Points are formatted as in Fig. 1. The bottom row of plots correspond to the plots above them, illustrating $K$ (solid) or $K_{mult}$ (dotted) by component, colored seprately for PCA and PACA."}
+
+PCA.e.ols <- gm.prcomp(Ye, tree, align.to.phy = FALSE, GLS = FALSE) # OLS PCA
+PCA.e.gls <- gm.prcomp(Ye, tree, align.to.phy = FALSE, GLS = TRUE) # GLS (phy) PCA
+PCA.e.tgls <- gm.prcomp(Ye, tree, 
+              align.to.phy = FALSE, GLS = TRUE, transform = TRUE) # GLS (phy) PCA; transformed residuals
+PACA.e.ols <- gm.prcomp(Ye, tree, align.to.phy = TRUE, GLS = FALSE) # OLS PACA
+PACA.e.gls <- gm.prcomp(Ye, tree, align.to.phy = TRUE, GLS = TRUE) # GLS PACA
+PACA.e.tgls <- gm.prcomp(Ye, tree, 
+               align.to.phy = TRUE, GLS = TRUE, transform = TRUE) # GLS PCA; transformed residuals
+
+Cov <- vcv.phylo(tree)
+
+K1ols <- k.by.p(PCA.e.ols, Cov)
+K1gls <- k.by.p(PCA.e.gls, Cov)
+K1tgls <- k.by.p(PCA.e.tgls, Cov)
+K2ols <- k.by.p(PACA.e.ols, Cov)
+K2gls <- k.by.p(PACA.e.gls, Cov)
+K2tgls <- k.by.p(PACA.e.tgls, Cov)
+
+Kmax <- max(c(unlist(K2ols), 1))
+
+par(mfrow = c(3, 3))
+
+phy.par <- list(tip.labels = FALSE, node.labels = FALSE, node.bg = 1, edge.color = 1)
+
+plot(PCA.e.ols, phylo = TRUE, main = "PA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.e.gls, phylo = TRUE, main = "Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.e.tgls, phylo = TRUE, main = "t-Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+plot(PACA.e.ols, phylo = TRUE, main = "OLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.e.gls, phylo = TRUE, main = "GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.e.tgls, phylo = TRUE, main = "t-GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+k2.by.p.plot(K1ols, K2ols, main = "OLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1gls, K2gls, main = "GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1tgls, K2tgls, main = "t-GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+
+par(mfrow = c(1, 1))
+
+```
+
+\newpage
+
+```{r}
+summary(PCA.e.ols)
+summary(PCA.e.gls)
+summary(PCA.e.tgls)
+summary(PACA.e.ols)
+summary(PACA.e.gls)
+summary(PACA.e.tgls)
+```
+
+## Summary
+
+When ecological signal is the only signal in the data, PCA and Phy-PCA projections will resemble each other (circles and squares separated along first PC; clade association unimportant).  Whether OLS or GLS mean-centered data are projected again has little influence on PACA ordination plots, but the projections and the phylogenetic profile plots illustrate that there is no real pattern to discern.  Interestingly, the transformed residuals projection for Phy-PCA clearly illustrates the ecological signal, independent of phylogeny, perhaps better than in Phy-PCA with projection of GLS mean-centered residuals.  
+
+\newpage
+
+## Plots of Data with both Phylogenetic and Ecological (Heterogenous) Signals
+
+```{r, include = TRUE, echo = TRUE, fig.width = 8, fig.height=8, fig.cap = "Data projections for the six possible scenarios, plus phylogenetic signal comparisons.  Data have both phylogenetic and ecological signals.  Points are formatted as in Fig. 1. The bottom row of plots correspond to the plots above them, illustrating $K$ (solid) or $K_{mult}$ (dotted) by component, colored seprately for PCA and PACA."}
+
+PCA.h.ols <- gm.prcomp(Yh, tree, align.to.phy = FALSE, GLS = FALSE) # OLS PCA
+PCA.h.gls <- gm.prcomp(Yh, tree, align.to.phy = FALSE, GLS = TRUE) # GLS (phy) PCA
+PCA.h.tgls <- gm.prcomp(Yh, tree, 
+              align.to.phy = FALSE, GLS = TRUE, transform = TRUE) # GLS (phy) PCA; transformed residuals
+PACA.h.ols <- gm.prcomp(Yh, tree, align.to.phy = TRUE, GLS = FALSE) # OLS PACA
+PACA.h.gls <- gm.prcomp(Yh, tree, align.to.phy = TRUE, GLS = TRUE) # GLS PACA
+PACA.h.tgls <- gm.prcomp(Yh, tree, 
+               align.to.phy = TRUE, GLS = TRUE, transform = TRUE) # GLS PCA; transformed residuals
+
+Cov <- vcv.phylo(tree)
+
+K1ols <- k.by.p(PCA.h.ols, Cov)
+K1gls <- k.by.p(PCA.h.gls, Cov)
+K1tgls <- k.by.p(PCA.h.tgls, Cov)
+K2ols <- k.by.p(PACA.h.ols, Cov)
+K2gls <- k.by.p(PACA.h.gls, Cov)
+K2tgls <- k.by.p(PACA.h.tgls, Cov)
+
+Kmax <- max(c(unlist(K2ols), 1))
+
+par(mfrow = c(3, 3))
+
+phy.par <- list(tip.labels = FALSE, node.labels = FALSE, node.bg = 1, edge.color = 1)
+
+plot(PCA.h.ols, phylo = TRUE, main = "PA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.h.gls, phylo = TRUE, main = "Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PCA.h.tgls, phylo = TRUE, main = "t-Phy-PCA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+plot(PACA.h.ols, phylo = TRUE, main = "OLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.h.gls, phylo = TRUE, main = "GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+plot(PACA.h.tgls, phylo = TRUE, main = "t-GLS-PACA",
+     phylo.par = phy.par, pch = 20 + tip.shapes, bg = tip.cols, col = tip.cols)
+
+k2.by.p.plot(K1ols, K2ols, main = "OLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1gls, K2gls, main = "GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+k2.by.p.plot(K1tgls, K2tgls, main = "t-GLS K comparisons", ylim = c(0, Kmax +1))
+legend("topleft", c("PCA", "PACA"), text.col = c("black", "red"))
+
+par(mfrow = c(1, 1))
+
+```
+
+\newpage
+
+```{r}
+summary(PCA.h.ols)
+summary(PCA.h.gls)
+summary(PCA.h.tgls)
+summary(PACA.h.ols)
+summary(PACA.h.gls)
+summary(PACA.h.tgls)
+```
+
+## Summary
+
+This example highlights the importance of PACA when used in conjunction with Phy-PCA.  First, PCA produces an ordination that conflates visualization of phylogenetic and ecological signals that Phy-PCA resolves in part (notice how the PhyPC plot here resembles that of Fig. 4, with respect to PC 1, but with phylogenetic signal more obvious along PhyPC 2).  PACA also resolves visualization of phylogenetic signal (notice how the PaC plots here resemble those in Fig. 3, where phylogenetic signal was simulated the same way).  The combination of Phy-PCA and PACA allow one to visualize phylogenetic and non-phylogenetic signals, independently.  Transforming GLS residuals better illustrates the very large eigenvalue of phyPC 1, which better reveals the dispersion of values associated with an ecological signal, independent of phylogenetic signal.
